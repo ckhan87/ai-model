@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GlobalPulse | AI-Powered Trends</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chosen Palette: Slate and Indigo (Slate-50 background, Slate-900 text, Indigo-600 accents for a modern, trustworthy news feel) -->
+    <!-- Application Structure Plan: A modern, top-navigation dashboard layout. The interface is designed to feel like a high-end intelligence briefing. Users navigate between distinct topics (World News, Tech, Hot Trends) via a sticky top nav. Content is generated on-demand via the DeepSeek API, saving tokens until the user explicitly requests an update. A custom "Ask DeepSeek" tab is also included for specific inquiries. -->
+    <!-- Visualization & Content Choices: 
+         1. Dynamic Content Fetching -> Goal: Present up-to-date summaries -> Method: DeepSeek Chat API integration.
+         2. Tabbed Navigation -> Goal: Organize distinct topics -> Method: Tailwind flex navigation with active state styling.
+         3. Markdown Parser -> Goal: Format AI responses cleanly -> Method: Custom JS regex parser to convert markdown to styled HTML.
+         4. Loading Skeletons -> Goal: Good UX during API calls -> Method: Tailwind animate-pulse divs.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <style>
+        body {
+            background-color: #f8fafc; /* slate-50 */
+            color: #0f172a; /* slate-900 */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+
+        .tab-btn {
+            position: relative;
+            transition: all 0.2s ease;
+        }
+        .tab-btn::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0%;
+            height: 2px;
+            background-color: #4f46e5; /* indigo-600 */
+            transition: width 0.3s ease;
+        }
+        .tab-btn.active {
+            color: #4f46e5;
+            font-weight: 600;
+        }
+        .tab-btn.active::after {
+            width: 100%;
+        }
+
+        /* Formatted Content Styling */
+        .ai-content h1 { font-size: 1.875rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 1rem; color: #1e1b4b; }
+        .ai-content h2 { font-size: 1.5rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.75rem; color: #312e81; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.25rem; }
+        .ai-content h3 { font-size: 1.25rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: #3730a3; }
+        .ai-content p { margin-bottom: 1rem; line-height: 1.7; color: #334155; }
+        .ai-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; color: #334155; }
+        .ai-content li { margin-bottom: 0.5rem; }
+        .ai-content strong { color: #0f172a; font-weight: 600; }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col">
+
+    <!-- Top Navigation -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">🌐</span>
+                    <span class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-blue-500 tracking-tight">AI Rankings Hub</span>
+                </div>
+                
+                <!-- Desktop Nav -->
+                <nav class="hidden md:flex space-x-8">
+                    <button onclick="switchTab('llms')" id="tab-llms" class="tab-btn active text-slate-500 hover:text-slate-900 px-1 py-5 text-sm font-medium">🧠 Top LLMs</button>
+                    <button onclick="switchTab('agents')" id="tab-agents" class="tab-btn text-slate-500 hover:text-slate-900 px-1 py-5 text-sm font-medium">🤖 AI Agents</button>
+                    <button onclick="switchTab('image')" id="tab-image" class="tab-btn text-slate-500 hover:text-slate-900 px-1 py-5 text-sm font-medium">🎨 Image AI</button>
+                    <button onclick="switchTab('video')" id="tab-video" class="tab-btn text-slate-500 hover:text-slate-900 px-1 py-5 text-sm font-medium">🎬 Video AI</button>
+                </nav>
+            </div>
+        </div>
+        
+        <!-- Mobile Nav (Scrollable horizontal) -->
+        <nav class="md:hidden flex overflow-x-auto border-t border-slate-100 bg-white hide-scrollbar">
+            <button onclick="switchTab('llms')" id="tab-llms-mobile" class="tab-btn active whitespace-nowrap text-slate-500 px-4 py-3 text-sm font-medium">🧠 LLMs</button>
+            <button onclick="switchTab('agents')" id="tab-agents-mobile" class="tab-btn whitespace-nowrap text-slate-500 px-4 py-3 text-sm font-medium">🤖 Agents</button>
+            <button onclick="switchTab('image')" id="tab-image-mobile" class="tab-btn whitespace-nowrap text-slate-500 px-4 py-3 text-sm font-medium">🎨 Image</button>
+            <button onclick="switchTab('video')" id="tab-video-mobile" class="tab-btn whitespace-nowrap text-slate-500 px-4 py-3 text-sm font-medium">🎬 Video</button>
+        </nav>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <div class="flex justify-between items-end mb-6">
+            <div>
+                <h1 id="section-title" class="text-3xl font-bold text-slate-900">🧠 Global LLM Rankings</h1>
+                <p id="section-subtitle" class="text-slate-500 mt-1">Top AI language models worldwide and their parent companies.</p>
+            </div>
+            <button onclick="fetchCurrentTab()" id="refresh-btn" class="hidden md:flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-4 py-2 rounded-lg text-sm font-semibold transition-colors border border-indigo-200 shadow-sm">
+                <span>🔄</span> Refresh Data
+            </button>
+        </div>
+
+        <!-- Content Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[500px] flex flex-col relative">
+
+            <div class="p-6 md:p-10 flex-grow relative">
+                
+                <!-- Loading State -->
+                <div id="loading-state" class="absolute inset-0 bg-white/90 z-10 p-6 md:p-10 flex flex-col gap-4">
+                    <div class="flex items-center gap-3 mb-4 text-indigo-600 font-medium">
+                        <span class="animate-spin text-xl">⏳</span> Generating briefing with DeepSeek AI...
+                    </div>
+                    <div class="h-6 bg-slate-200 rounded animate-pulse w-1/3"></div>
+                    <div class="h-4 bg-slate-100 rounded animate-pulse w-full mt-4"></div>
+                    <div class="h-4 bg-slate-100 rounded animate-pulse w-5/6"></div>
+                    <div class="h-4 bg-slate-100 rounded animate-pulse w-4/5"></div>
+                    
+                    <div class="h-6 bg-slate-200 rounded animate-pulse w-1/4 mt-8"></div>
+                    <div class="h-4 bg-slate-100 rounded animate-pulse w-full mt-4"></div>
+                    <div class="h-4 bg-slate-100 rounded animate-pulse w-3/4"></div>
+                </div>
+
+                <!-- Error State -->
+                <div id="error-state" class="hidden absolute inset-0 bg-white z-20 p-6 md:p-10 flex flex-col items-center justify-center text-center">
+                    <div class="text-4xl mb-4">⚠️</div>
+                    <h3 class="text-xl font-bold text-slate-900 mb-2">Connection Error</h3>
+                    <p id="error-message" class="text-slate-500 mb-6 max-w-md">Could not connect to the DeepSeek API. Please check your network or try again later.</p>
+                    <button onclick="fetchCurrentTab()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-colors">Try Again</button>
+                </div>
+
+                <!-- Generated Content Output -->
+                <div id="content-output" class="ai-content hidden">
+                    <!-- Markdown gets injected here -->
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Mobile Refresh Button -->
+        <button onclick="fetchCurrentTab()" id="refresh-btn-mobile" class="mt-6 w-full md:hidden flex items-center justify-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-4 py-4 rounded-xl text-md font-semibold transition-colors border border-indigo-200 shadow-sm">
+            <span>🔄</span> Refresh Current Data
+        </button>
+
+    </main>
+
+    <footer class="bg-white border-t border-slate-200 py-8 mt-auto text-center">
+        <p class="text-slate-500 text-sm flex items-center justify-center gap-1">
+            Powered by <strong>DeepSeek API</strong> <span class="text-indigo-600">⚡</span> Designed for exploration.
+        </p>
+    </footer>
+
+    <script>
+        // --- Configuration ---
+        const API_KEY = "sk-607570af647e4ce3baabf5f3da383adf";
+        
+        let currentTab = 'llms';
+        
+        // Cache to prevent re-fetching when just clicking between tabs
+        const dataCache = {
+            llms: null,
+            agents: null,
+            image: null,
+            video: null
+        };
+
+        const config = {
+            llms: {
+                title: "🧠 Global LLM Rankings",
+                subtitle: "Top AI language models worldwide and their parent companies.",
+                systemMsg: "You are an expert AI industry analyst. Provide a ranked list of the top foundational AI language models globally. Include the model name, company name, and a brief 1-sentence description of its strengths. Format as a clean numbered list.",
+                userPrompt: "Rank the top 10 foundational AI language models currently available. Format strictly with markdown."
+            },
+            agents: {
+                title: "🤖 Top AI Agents & Tools",
+                subtitle: "Leading autonomous AI agents and agency tools.",
+                systemMsg: "You are an expert AI industry analyst. Provide a ranked list of the top AI agents, autonomous coding tools, and agentic frameworks globally. Include the tool/model name, the company/creator, and its primary use case.",
+                userPrompt: "Rank the top 10 AI agents or agentic tools currently available (e.g., Devin, AutoGPT, etc.). Format strictly with markdown."
+            },
+            image: {
+                title: "🎨 Top 10 Image AI Models",
+                subtitle: "The world's leading AI image generation models.",
+                systemMsg: "You are an expert AI industry analyst. Provide a ranked list of the top 10 AI image generation models globally. Include the model name, company name, and its standout feature.",
+                userPrompt: "Rank the top 10 AI image generators currently available. Format strictly with markdown."
+            },
+            video: {
+                title: "🎬 Top 10 Video AI Models",
+                subtitle: "The world's leading AI video generation models.",
+                systemMsg: "You are an expert AI industry analyst. Provide a ranked list of the top 10 AI video generation models globally. Include the model name, company name, and its standout feature.",
+                userPrompt: "Rank the top 10 AI video generators currently available. Format strictly with markdown."
+            }
+        };
+
+        // --- Core Application Logic ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Fetch initial data for the default tab
+            fetchCurrentTab(true);
+        });
+
+        function switchTab(tabId) {
+            if (currentTab === tabId) return;
+            currentTab = tabId;
+
+            // Update UI
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active', 'text-indigo-600'));
+            
+            // Handle both desktop and mobile tab buttons
+            const desktopTab = document.getElementById(`tab-${tabId}`);
+            const mobileTab = document.getElementById(`tab-${tabId}-mobile`);
+            if(desktopTab) desktopTab.classList.add('active');
+            if(mobileTab) mobileTab.classList.add('active');
+
+            document.getElementById('section-title').innerText = config[tabId].title;
+            document.getElementById('section-subtitle').innerText = config[tabId].subtitle;
+
+            // Fetch or load from cache
+            if (dataCache[tabId]) {
+                showContent(dataCache[tabId]);
+            } else {
+                fetchCurrentTab();
+            }
+        }
+
+        async function fetchCurrentTab(forceRefresh = false) {
+            if (!forceRefresh && dataCache[currentTab]) {
+                showContent(dataCache[currentTab]);
+                return;
+            }
+
+            const { systemMsg, userPrompt } = config[currentTab];
+            await executeDeepSeekCall(userPrompt, systemMsg, currentTab);
+        }
+
+        async function executeDeepSeekCall(userPrompt, systemMsg, cacheKey) {
+            const loading = document.getElementById('loading-state');
+            const error = document.getElementById('error-state');
+            const output = document.getElementById('content-output');
+            
+            loading.classList.remove('hidden');
+            error.classList.add('hidden');
+            output.classList.add('hidden');
+
+            try {
+                const url = 'https://api.deepseek.com/chat/completions';
+                const payload = {
+                    model: 'deepseek-chat',
+                    messages: [
+                        { role: 'system', content: systemMsg },
+                        { role: 'user', content: userPrompt }
+                    ]
+                };
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${API_KEY}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error?.message || `API Error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const textResult = data.choices[0].message.content;
+                
+                // Save to cache if it's a standard tab
+                if (cacheKey !== 'custom') {
+                    dataCache[cacheKey] = textResult;
+                }
+                
+                showContent(textResult);
+
+            } catch (err) {
+                console.error("DeepSeek API Error:", err);
+                loading.classList.add('hidden');
+                error.classList.remove('hidden');
+                document.getElementById('error-message').innerText = err.message;
+            }
+        }
+
+        function showContent(markdownText) {
+            const loading = document.getElementById('loading-state');
+            const error = document.getElementById('error-state');
+            const output = document.getElementById('content-output');
+
+            output.innerHTML = parseMarkdown(markdownText);
+            
+            loading.classList.add('hidden');
+            error.classList.add('hidden');
+            output.classList.remove('hidden');
+        }
+
+        // --- Custom Simple Markdown Parser ---
+        function parseMarkdown(text) {
+            let html = text;
+            
+            // Clean up DeepSeek thinking tags if they leak through
+            html = html.replace(/<think>[\s\S]*?<\/think>/g, '');
+
+            // Headers
+            html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+            html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+            html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+            
+            // Bold and Italic
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
+            // Process Lines for Lists and Paragraphs
+            const lines = html.split('\n');
+            let inList = false;
+            let formattedHtml = '';
+
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i].trim();
+                
+                // Skip empty lines, but close list if open
+                if (line === '') {
+                    if (inList) {
+                        formattedHtml += '</ul>';
+                        inList = false;
+                    }
+                    continue;
+                }
+
+                // Is it a list item? (matches "- item" or "* item")
+                if (line.match(/^[-*]\s/)) {
+                    if (!inList) {
+                        formattedHtml += '<ul>';
+                        inList = true;
+                    }
+                    formattedHtml += `<li>${line.substring(2)}</li>`;
+                } 
+                // Is it already an HTML tag? (like our headers)
+                else if (line.match(/^<h[1-6]>/)) {
+                    if (inList) {
+                        formattedHtml += '</ul>';
+                        inList = false;
+                    }
+                    formattedHtml += line;
+                }
+                // Standard paragraph
+                else {
+                    if (inList) {
+                        formattedHtml += '</ul>';
+                        inList = false;
+                    }
+                    formattedHtml += `<p>${line}</p>`;
+                }
+            }
+
+            if (inList) {
+                formattedHtml += '</ul>';
+            }
+
+            return formattedHtml;
+        }
+
+    </script>
+</body>
+</html>
